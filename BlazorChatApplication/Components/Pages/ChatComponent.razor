@@ -1,0 +1,138 @@
+﻿@page "/chatcomponent/{SenderId:int}/{ReceiverId:int}"
+
+@rendermode InteractiveServer
+
+@using BlazorChatApplication.Models
+@using Microsoft.AspNetCore.SignalR.Client
+@inject ChatService ChatService
+@inject NavigationManager Navigation
+
+<h3>@SenderName Chat with @ReceiverName</h3>
+
+<div>
+    <input @bind="messageContent" placeholder="Type your message..." />
+    <button @onclick="SendMessage" >Send</button>
+</div>
+
+<div>
+    <h4>Messages</h4>
+    @foreach (var message in messages)
+    {
+        <div>
+            <b>@(GetUserNameById(message.SenderId)):</b> @message.Content
+        </div>
+    }
+</div>
+
+<hr />
+
+@code {
+    [Parameter]
+    public int SenderId { get; set; }
+
+    [Parameter]
+    public int ReceiverId { get; set; }
+
+    private List<Message> messages = new List<Message>();
+    private List<User> users = new List<User>();
+    private string messageContent;
+    private string SenderName;
+    private string ReceiverName;
+    private HubConnection hubConnection;
+
+    protected override async Task OnInitializedAsync()
+    {
+        users = await ChatService.GetUsersAsync();
+        SenderName = users.FirstOrDefault(u => u.Id == SenderId).Name;
+        ReceiverName = users.FirstOrDefault(u => u.Id == ReceiverId).Name;
+        await InitializeHubConnection();
+        await LoadMessages();
+    }
+
+    private async Task InitializeHubConnection()
+    {
+        hubConnection = new HubConnectionBuilder()
+            .WithUrl(Navigation.ToAbsoluteUri("/chathub"))
+            .Build();
+
+        hubConnection.On<int, int, string>("ReceiveMessage", (senderId, receiverId, message) =>
+        {
+            if ((SenderId == senderId && ReceiverId == receiverId) ||
+                (SenderId == receiverId && ReceiverId == senderId))
+            {
+                var newMessage = new Message
+                    {
+                        SenderId = senderId,
+                        ReceiverId = receiverId,
+                        Content = message,
+                        Timestamp = DateTime.Now
+                    };
+                messages.Add(newMessage);
+                InvokeAsync(StateHasChanged);
+            }
+        });
+
+        try
+        {
+            await hubConnection.StartAsync();
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error starting connection: {ex.Message}");
+        }
+    }
+
+    private async Task LoadMessages()
+    {
+        try
+        {
+            messages = new List<Message>();
+            // messages = await ChatService.GetMessagesAsync(SenderId, ReceiverId);
+
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error loading messages: {ex.Message}");
+        }
+    }
+
+    private async Task SendMessage()
+    {
+        if (!string.IsNullOrEmpty(messageContent))
+        {
+            var newMessage = new Message
+                {
+                    SenderId = SenderId,
+                    ReceiverId = ReceiverId,
+                    Content = messageContent,
+                    Timestamp = DateTime.Now
+                };
+
+            try
+            {
+                await hubConnection.SendAsync("SendMessage", SenderId, ReceiverId, messageContent);
+                //await ChatService.SendMessageAsync(newMessage);
+
+                //messages.Add(newMessage);
+                messageContent = string.Empty;
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Error sending message: {ex.Message}");
+            }
+        }
+    }
+
+    private string GetUserNameById(int userId)
+    {
+        var user = users.FirstOrDefault(u => u.Id == userId);
+        return user != null ? user.Name : "Unknown";
+    }
+
+    public bool IsConnected => hubConnection.State == HubConnectionState.Connected;
+
+    public async ValueTask DisposeAsync()
+    {
+        await hubConnection.DisposeAsync();
+    }
+}

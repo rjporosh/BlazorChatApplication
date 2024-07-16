@@ -1,0 +1,49 @@
+﻿@page "/counter"
+@rendermode InteractiveServer 
+
+@using System.Collections.Generic
+@using BlazorChatApplication.Models
+@inject ChatService ChatService
+@inject NavigationManager Navigation
+
+<div class="row">
+    <div class="col-md-6">
+        <label>Sender:</label>
+        <select @bind="SenderId" >
+            @foreach (var user in users)
+            {
+                <option value="@user.Id">@user.Name</option>
+            }
+        </select>
+    </div>
+    <div class="col-md-6">
+        <label>Receiver:</label>
+        <select @bind="ReceiverId">
+            @foreach (var user in users)
+            {
+                <option value="@user.Id">@user.Name</option>
+            }
+        </select>
+    </div>
+</div>
+
+<button class="btn btn-primary" @onclick=GoForChat>Click For Chat</button>
+
+@code {
+    private List<User> users = new List<User>();
+    private int SenderId;
+    private int ReceiverId;
+
+    protected override async Task OnInitializedAsync()
+    {
+        users = await ChatService.GetUsersAsync();
+    }
+
+    private void GoForChat()
+    {
+        if (SenderId > 0 && ReceiverId > 0)
+        {
+            Navigation.NavigateTo($"/chatcomponent/{SenderId}/{ReceiverId}");
+        }
+    }
+}
